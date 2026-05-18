@@ -1,0 +1,1 @@
+For this task, each wrapper should be able to generate a .h5ad files to indicate their embedding for the respective cells. 

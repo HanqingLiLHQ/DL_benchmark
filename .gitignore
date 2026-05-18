@@ -1,0 +1,72 @@
+# ---------------------------------------------------------------------------
+# Large data, datasets, and pretrained / fine-tuned model weights
+#   (~11 GB; obtain via env/setup_*.sh and the per-task READMEs)
+# ---------------------------------------------------------------------------
+data/
+models/
+
+# Datasets / embeddings / arrays (every wrapper emits big .h5ad outputs)
+*.h5ad
+*.h5
+*.loom
+*.npy
+*.npz
+*.zarr/
+
+# Model checkpoints / weights
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.onnx
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.gz
+
+# scGPT fine-tune run dirs (checkpoints + logs created per run)
+**/save/
+
+# ---------------------------------------------------------------------------
+# Presentation — excluded from the repo entirely (per request)
+# ---------------------------------------------------------------------------
+presentation/
+_chk/
+
+# ---------------------------------------------------------------------------
+# Claude Code local project files
+# ---------------------------------------------------------------------------
+.claude/
+
+# ---------------------------------------------------------------------------
+# Benchmark task dirs: keep the per-model *-wrapper/ code, benchmark.py and
+# READMEs/results, but NOT the underscore helper/glue/test scripts (per
+# request: _common.py, _py2nb.py, _make_shims.py, _check_schema.py,
+# _fix_silhouette_cdist.py, _test_silhouette_fix.py, __init__.py).
+# Patterns are path-anchored, so `*` does not cross `/` -> only the task-root
+# helpers match; files inside the *-wrapper/ dirs are unaffected.
+# ---------------------------------------------------------------------------
+ct_annotation/_*.py
+embd_clustering/_*.py
+batch_integration/_*.py
+
+# ---------------------------------------------------------------------------
+# Python / Jupyter / tooling caches
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+.virtual_documents/
+.pytest_cache/
+.cache/
+.DS_Store
+
+# Local logs / tmp
+*.log
+tmp/
+.tmp/

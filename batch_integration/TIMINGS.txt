@@ -1,0 +1,10 @@
+wrapper                    seconds      kind
+scVI                       7.7          reuse-shim rc=0
+scGPT-zeroshot             7.8          reuse-shim rc=0
+Geneformer                 10.2         reuse-shim rc=0
+scFoundation               8.4          reuse-shim rc=0
+cellPLM                    10.1         reuse-shim rc=0
+scGPT-finetuned-SMOKE      539          1-epoch rc=0
+scGPT-finetuned            4476         15-epoch rc=0
+scIB-benchmark             577          GPU + cdist-fix: neighbors 73s + metrics-loop 504s (7emb x 10metric) rc=0
+                                        (stock CPU equivalent OOM'd at scFoundation after ~105 min)

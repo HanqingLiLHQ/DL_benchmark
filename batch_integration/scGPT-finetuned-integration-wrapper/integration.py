@@ -17,7 +17,7 @@
 #   - wandb stripped (no-op shim), matching ct_annotation/scGPT-annotation-wrapper.
 #   - load_model resolved to an absolute path.
 #   - final cell: extract integrated cell embeddings on ALL cells (original
-#     file order) and re-emit under the integration output schema via _common.
+#     file order) and re-emit under the integration output schema.
 #   - data_is_raw=True (gse155468 .X is integer raw counts: verified min=0,
 #     allint=True), so the tutorial's normalize->log1p->HVG(seurat_v3)->bin path
 #     applies exactly as for the tutorial's PBMC (also data_is_raw=True).
@@ -70,9 +70,6 @@ from scgpt.loss import (
 from scgpt.preprocess import Preprocessor
 from scgpt import SubsetsBatchSampler
 from scgpt.utils import set_seed, eval_scib_metrics, load_pretrained
-
-sys.path.insert(0, "/data/benchmark/batch_integration")
-import _common
 
 sc.set_figure_params(figsize=(4, 4))
 os.environ["KMP_WARNINGS"] = "off"
@@ -168,7 +165,7 @@ import hdf5plugin  # noqa: F401  (codecs for gse155468.h5ad)
 
 adata = sc.read_h5ad("/data/benchmark/data/cellPLM/data/gse155468.h5ad")
 adata.obs_names = adata.obs_names.astype(str)
-adata.obs_names_make_unique()  # same transform _common.load_labels applies
+adata.obs_names_make_unique()  # 234 duplicate ids in gse155468; all wrappers apply this
 adata.obs["celltype"] = adata.obs["celltype"].astype("category")  # eval/UMAP only
 ori_batch_col = "orig.ident"
 data_is_raw = True  # gse155468 .X is integer raw counts (verified)
@@ -720,8 +717,8 @@ torch.save(best_model.state_dict(), save_dir / "best_model.pt")
 # %%
 # --- Extract integrated cell embeddings on ALL cells, ORIGINAL file order,
 #     and re-emit under the integration schema. We use `adata` (NOT
-#     adata_sorted) so obs_names_make_unique() matches _common.load_labels()
-#     (same file, same read order, same anndata transform) -> label-safe.
+#     adata_sorted) so obs_names_make_unique() matches the ground-truth load
+#     below (same file, same read order, same anndata transform) -> label-safe.
 best_model.eval()
 all_counts_full = (
     adata.layers[input_layer_key].toarray()
@@ -754,10 +751,24 @@ with torch.no_grad(), torch.cuda.amp.autocast(enabled=config.amp):
 cell_embeddings = cell_embeddings / np.linalg.norm(
     cell_embeddings, axis=1, keepdims=True
 )
-_common.write_integration_h5ad(
-    cell_embeddings,
-    [str(x) for x in adata.obs_names],
-    "gse155468_integration.h5ad",
+
+# Re-emit under the integration output schema (same shape every wrapper writes).
+import anndata as ad
+GROUND_TRUTH = "/data/benchmark/data/cellPLM/data/gse155468.h5ad"
+gt = ad.read_h5ad(GROUND_TRUTH)
+gt.obs_names = gt.obs_names.astype(str)
+gt.obs_names_make_unique()
+ids = [str(x) for x in adata.obs_names]
+labels = gt.obs.loc[ids]
+out = AnnData(
+    X=np.zeros((cell_embeddings.shape[0], 1), dtype=np.float32),
+    obs={"celltype": labels["celltype"].astype(str).values,
+         "batch":    labels["orig.ident"].astype(str).values},
 )
+out.obs_names = ids
+out.obsm["X_emb"] = cell_embeddings.astype(np.float32)
+assert set(out.obs_names) == set(gt.obs_names), "obs_names diverge from gse155468.h5ad"
+out.write_h5ad("gse155468_integration.h5ad")
+print(f"wrote gse155468_integration.h5ad  emb={cell_embeddings.shape}")
 
 gc.collect()

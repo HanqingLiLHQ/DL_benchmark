@@ -15,9 +15,9 @@ the FMs and bias the comparison).
 
 - **Batch key:** `obs['orig.ident']` — 11 samples. Method input / metric grouping only.
 - **Bio label:** `obs['celltype']` — 11 types. Scoring only (see label firewall).
-- Raw integer counts; 234 duplicate `obs_names` → `_common.load_labels()`
-  applies `obs_names_make_unique()` and **all** embeddings are aligned by that
-  exact ID order (`benchmark.py` does the same before attaching them).
+- Raw integer counts; 234 duplicate `obs_names` → every wrapper applies
+  `obs_names_make_unique()` and **all** embeddings are aligned by that exact
+  ID order (`benchmark.py` does the same before attaching them).
 
 ## Per-model integration recipe (paper-faithful)
 
@@ -33,9 +33,10 @@ the FMs and bias the comparison).
 
 Only `scGPT (fine-tuned)` is re-trained; every other embedding (including
 scGPT zero-shot) is reused from `embd_clustering/` and re-emitted under the
-integration output schema (`_common.write_integration_h5ad`). The
-**scGPT zero-shot vs fine-tuned pair is the headline comparison**: same
-backbone, with vs without the integration fine-tune.
+common integration output schema (`obsm['X_emb']`, `obs['celltype']`,
+`obs['batch']`, aligned `obs_names`) — each wrapper is self-contained and
+performs that re-emit inline. The **scGPT zero-shot vs fine-tuned pair is the
+headline comparison**: same backbone, with vs without the integration fine-tune.
 
 ## Evaluation validity — label firewall
 
@@ -61,15 +62,16 @@ N=48082 and **scFoundation's d=3072** that intermediate is ~156 GB → OOM
 (machine: 62 GB RAM / 96 GB VRAM). d ≤ 768 embeddings fit; only scFoundation
 failed (at the first silhouette metric, `isolated_labels`).
 
-`_fix_silhouette_cdist.py` replaces `cdist` with the algebraically identical
-`‖a‖² + ‖b‖² − 2·a·b` form (O(chunk·N) memory, single BLAS matmul). It is
-applied via `_fix_silhouette_cdist.apply()` in `benchmark.py` before
-`Benchmarker.benchmark()`. **The scIB protocol, metric set, and the full
+`benchmark.py` defines `cdist_lowmem` — the algebraically identical
+`‖a‖² + ‖b‖² − 2·a·b` form (O(chunk·N) memory, single BLAS matmul) — and
+rebinds it into both `scib_metrics.utils._dist` and `scib_metrics.utils._silhouette`
+before `Benchmarker.benchmark()`. **The scIB protocol, metric set, and the full
 3072-d scFoundation embedding are unchanged** — only the distance kernel's
 memory layout differs, and silhouette per-sample values are independent of
 chunking (per-chunk results are concatenated, never cross-reduced).
 
-Equivalence is verified by `_test_silhouette_fix.py`:
+Historical equivalence checks (against stock `scib-metrics` and
+`scipy.spatial.distance.cdist`):
 - `cdist_lowmem` vs `scipy.spatial.distance.cdist`: max |Δ| ≈ 1e-6 (euclidean), 1e-7 (cosine).
 - stock vs patched `silhouette_samples` on a real 2500-cell scFoundation subsample: ASW |Δ| ≈ 2e-6, per-sample max |Δ| ≈ 1e-4.
 - full 48082×3072 scFoundation silhouette: completes, finite, ASW **0.175762 identical on CPU and GPU**.
@@ -103,14 +105,18 @@ scikit-learn   1.8.0
 ## Re-run
 
 ```bash
-# 1. wrappers (only scGPT-finetuned is heavy; others are reuse-shims)
 cd /data/benchmark/batch_integration
-python _make_shims.py                                   # scVI/scGPT-zs/Geneformer/scFoundation/cellPLM
-#   scGPT-finetuned: run scGPT-finetuned-integration-wrapper in the `scgpt` env
-JAX_PLATFORMS=cpu /home/hanqing-li/anaconda3/envs/scib-metrics/bin/python _check_schema.py   # all 6 must pass
+PY=/home/hanqing-li/anaconda3/envs/scib-metrics/bin/python
 
-# 2. scIB benchmark (GPU; cdist fix is wired into benchmark.py)
-/home/hanqing-li/anaconda3/envs/scib-metrics/bin/python _py2nb.py benchmark.py benchmark.ipynb
+# 1. wrappers (only scGPT-finetuned is heavy; the other five just re-emit
+#    their embd_clustering/ counterpart under the integration schema)
+for d in scVI scGPT-zeroshot Geneformer scFoundation cellPLM; do
+  ( cd "${d}-integration-wrapper" && $PY integration.py )
+done
+# scGPT-finetuned: run scGPT-finetuned-integration-wrapper/integration.py in the `scgpt` env
+
+# 2. scIB benchmark (GPU; cdist patch is inlined in benchmark.py)
+$PY _py2nb.py benchmark.py benchmark.ipynb
 JAX_DEFAULT_MATMUL_PRECISION=highest \
   /home/hanqing-li/anaconda3/envs/scib-metrics/bin/jupyter nbconvert \
   --to notebook --execute --inplace benchmark.ipynb
